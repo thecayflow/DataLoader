@@ -1,0 +1,212 @@
+import math
+
+# Open form for user-defined values
+form = GUIFormDialog.new()
+form.setTitle("User defined Values")
+
+form.addFloatField("Spacer for Activities", 1.0)
+form.addIntField("Secondaries Count", 0)
+form.addFloatField("Spacer for Secondaries", 1.0)
+form.addIntField("Number of columns", 1)
+
+if (form.show() == GUI_DIALOG_ACCEPTED):
+
+	# Get form user-defined values
+  spacer_acts = form.getFieldValue("Spacer for Activities")
+  secondariesCount = form.getFieldValue("Secondaries Count")
+  spacer_secs = form.getFieldValue("Spacer for Secondaries")
+	columnsCount = form.getFieldValue("Number of columns")
+
+	# Show dialog browsing for a file to open with .bin or .pd extension.
+	dlg = GUIFilePickerDialog.new()
+	filePath = dlg.show( FILE_PICKER_LOAD, "/Users/victor/Documents/realflow/scenes/activities/", "*.rfs;*.txt", "Load data" )
+
+#read values from selected file
+fileValues=[]
+for currentIndex in range (columnsCount):
+	fileValues.append("List"+str(currentIndex))
+	fileValues[currentIndex]=[]
+	with open(str(filePath), 'r') as f:
+		for line in f:
+			numbers_float = map(float, line.split())
+			fileValues[currentIndex].append(numbers_float[currentIndex])
+
+scene.message("Data succesfully loaded.")
+
+#init spheres lists & secondaries angle
+
+activities=[]
+
+secondariesCollection = [[] for i in range(secondariesCount)]
+secondariesAngle = math.pi/(secondariesCount+1)
+
+#prepare secondaries colors according to secondaries count
+initColor=[219,96,0]
+endColor=[255,255,255]
+SecColors=[]
+
+initR,initG,initB = initColor[0],initColor[1],initColor[2]
+endR,endG,endB = endColor[0],endColor[1],endColor[2]
+
+#Generate color palette avoiding ZeroDivisionError
+if secondariesCount != 1:
+	for v in range(0,secondariesCount):
+		degR=initR+(v*(endR-initR)/(secondariesCount-1))
+		degG=initG+(v*(endG-initG)/(secondariesCount-1))
+		degB=initB+(v*(endB-initB)/(secondariesCount-1))
+	
+		SecColors.append(Vector.new(degR,degG,degB))
+
+else:
+	SecColors.append(Vector.new(initR,initG,initB))
+
+#create spheres with diameters according to 'fileValues[0]' data
+scene.message("Activities in process, please wait")
+for i in range(0, len(fileValues[0])):
+
+	#first activity sphere is created at (0,0,0)
+	newDiameterVector = Vector.new(fileValues[0][i],fileValues[0][i],fileValues[0][i])
+	newSphere = scene.addSphere(4)
+	newSphere
+	newSphere.setParameter("Scale", newDiameterVector)
+	#we lift it up the radius value
+	newSphere.setParameter("Position", Vector.new(0.0,fileValues[0][i]/2,0.0))
+	
+	activities.append(newSphere)
+	activities[0].setParameter("Color", Vector.new(219,96,0))
+
+	#create secondaries
+	for sec in range (0,secondariesCount):
+		newsec=scene.addSphere(2)
+		newsec
+		secondariesCollection[sec].append(newsec)
+
+	#set Position & color for 1st secondaries
+	if i==0:
+		
+		RadiusDummy = (fileValues[0][i]/2)+spacer_secs
+		currentSecondaries = [item[i] for item in secondariesCollection]
+		
+		j=0
+		while j<len(currentSecondaries):
+			secX=math.cos(secondariesAngle*(j+1)) * RadiusDummy
+			secY=math.sin(secondariesAngle*(j+1)) * RadiusDummy
+			currentSecondaryPos = Vector.new(secX,secY+(fileValues[0][i]/2),0.0)
+			currentSecondaries[j].setParameter("Position", currentSecondaryPos)
+
+			currentSecondaries[j].setParameter("Color", SecColors[j])
+
+			j=j+1
+
+	#set position for 2nd and subsequent activities spheres:
+	if i>0:
+		CurrentRadius = fileValues[0][i]/2
+		PreSphereRadius = fileValues[0][i-1]/2
+		PreSpherePosition = activities[i-1].getParameter("Position")
+		PreSphereXPosition = PreSpherePosition.getX()
+		newXPositionValue = PreSphereXPosition + PreSphereRadius + CurrentRadius + spacer_acts
+		
+		newYPositionValue = CurrentRadius
+
+		newPositionVector = Vector.new(newXPositionValue, newYPositionValue, 0.0)
+		activities[i].setParameter("Position", newPositionVector)
+		activities[i].setParameter("Color", Vector.new(219,96,0))
+
+		#set Position for 2nd and subsequent secondaries
+		RadiusDummy = (fileValues[0][i]/2)+spacer_secs	
+		currentSecondaries = [item[i] for item in secondariesCollection]
+
+		j=0
+		while j<len(currentSecondaries):
+			secX=math.cos(secondariesAngle*(j+1)) * RadiusDummy + newXPositionValue
+			secY=math.sin(secondariesAngle*(j+1)) * RadiusDummy
+			currentSecondaryPos = Vector.new(secX,secY+CurrentRadius,0.0)
+			currentSecondaries[j].setParameter("Position", currentSecondaryPos)
+
+			currentSecondaries[j].setParameter("Color", SecColors[j])
+
+			j=j+1
+
+#Animation
+
+
+# set end and start points
+startO = scene.getObject(activities[0].getName()).getParameter("Position").getX()
+endO = scene.getObject(activities[-1].getName()).getParameter("Position").getX()
+
+#create focusObject to track and renderCam
+focusObject = scene.addNull()
+focusObject.setParameter("Position", Vector.new(startO, 0.0,0.0))
+
+renderCam=scene.addCamera()
+renderCam.setParameter("Position", Vector.new(startO, 0.0, -10.0))
+renderCam.setParameter("Link target", str(focusObject.getName()))
+renderCamX=renderCam.getParameter("Position").getX()
+scene.setCurrentCamera(renderCam.getName())
+
+#set renderCam as current camera
+#scene.setCurrentCamera(str(renderCam.getName()))
+
+# Define the simulation range
+simRange = scene.getMaxFrames() - scene.getMinFrame()
+
+indexCounter = 0
+curvePosX = focusObject.getParameterCurve("Position.X")
+xpos=focusObject.getParameter("Position").getX()
+
+curvePosXCam = renderCam.getParameterCurve("Position.X")
+
+# Go through the total frames 
+for l in range(0, simRange):
+ 
+    # Calculate the current time based on frame and FPS
+    currentTime = float(indexCounter) / scene.getFps()
+		scene.message("Frame: " + str(indexCounter) + " of: " + str(simRange))
+ 
+		focusObject.setParameter("Position", Vector.new(xpos, 5.0, 0.0))
+		renderCam.setParameter("Position", Vector.new(renderCamX, 6.0, -50.0))
+
+    # Add new keys for XYZ and define their values and key types at the current time
+    keyX = Key.new()
+    keyX.time = currentTime
+    keyX.value = xpos
+    keyX.type = KEY_TYPE_TCB
+ 
+		curvePosX.addKey(keyX)
+
+		keyXcam = Key.new()
+		keyXcam.time = currentTime
+		keyXcam.value = renderCamX
+		keyXcam.type = KEY_TYPE_TCB
+
+		curvePosXCam.addKey(keyXcam)
+ 
+    # Increment the counter
+    indexCounter += 1
+
+		#if locator gets late, then accelerate!
+		if (renderCamX - xpos) >= 5:
+			increment=2
+			xpos=xpos+(1.75*increment)
+			#scene.message("Accelerate")
+
+			renderCamX = renderCamX+1.75
+
+		#if locator matches camera, then keep constant
+		elif -5 < (renderCamX - xpos) < 5:
+			xpos=xpos+1.75
+			#scene.message("KeepConstant")
+
+			renderCamX = renderCamX+1.75
+
+		#if locator takes advantage, then deccelerate!
+		elif (renderCamX - xpos) <= -5:
+			increment=2
+			xpos=xpos+(1.75/increment)
+			#scene.message("Deccelerate")
+
+			renderCamX = renderCamX+1.75
+
+scene.videoPreview("/Users/victor/Documents/realflow/preview.mov", "/Users/victor/Documents/realflow/frames", 800, 600, True, False, 0, 499, False, 0)
+
+
